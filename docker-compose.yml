@@ -1,0 +1,6 @@
+services:
+  postgres-mcp:
+    build: .
+    ports:
+      - "3200:80"
+    restart: unless-stopped

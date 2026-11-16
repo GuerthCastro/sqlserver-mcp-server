@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using Mcp.SqlServer.Configuration;
 using Mcp.SqlServer.Services;
 using ModelContextProtocol.Server;
 
@@ -7,7 +8,7 @@ namespace Mcp.SqlServer.Tools;
 [McpServerToolType]
 public class ConnectTool(DatabaseService databaseService)
 {
-    [McpServerTool, Description("Connects to a SQL Server instance. Port is optional, defaults to 1433.")]
+    [McpServerTool, Description("Connects to a SQL Server instance and returns a connectionId. Pass that connectionId to every other tool. Port is optional, defaults to 1433.")]
     public async Task<string> Connect(
         [Description("SQL Server host or IP address")] string host,
         [Description("SQL Server port, defaults to 1433")] int? port,
@@ -15,18 +16,37 @@ public class ConnectTool(DatabaseService databaseService)
         [Description("Password")] string password,
         [Description("Default database, optional")] string? database)
     {
-        databaseService.Configure(host, port, username, password, database);
+        var configuration = new ServerConfiguration
+        {
+            Host = host,
+            Port = port,
+            Username = username,
+            Password = password,
+            Database = database
+        };
 
         try
         {
-            await using var connection = await databaseService.OpenConnectionAsync();
+            await using var connection = await databaseService.OpenConnectionAsync(configuration);
             var serverVersion = connection.ServerVersion;
-            return $"Connected to SQL Server {serverVersion} at {host}:{databaseService.GetConfiguration().ResolvedPort}";
+            var connectionId = databaseService.Register(configuration);
+
+            return $"Connected to SQL Server {serverVersion} at {host}:{configuration.ResolvedPort}.\n" +
+                   $"connectionId: {connectionId}\n" +
+                   "Use this connectionId in every other tool call.";
         }
         catch (Exception ex)
         {
-            databaseService.Configure(string.Empty, null, string.Empty, string.Empty, null);
             return $"Connection failed: {ex.Message}";
         }
+    }
+
+    [McpServerTool, Description("Closes a connection created with connect and forgets its credentials.")]
+    public string Disconnect(
+        [Description("connectionId returned by connect")] string? connectionId = null)
+    {
+        return databaseService.Remove(connectionId)
+            ? "Disconnected."
+            : "Unknown or expired connectionId.";
     }
 }

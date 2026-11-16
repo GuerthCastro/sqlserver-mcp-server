@@ -5,5 +5,6 @@
     <File Path="Dockerfile" />
     <File Path="README.md" />
   </Folder>
+  <Project Path="Mcp.SqlServer.Tests/Mcp.SqlServer.Tests.csproj" />
   <Project Path="Mcp.SqlServer/Mcp.SqlServer.csproj" />
 </Solution>

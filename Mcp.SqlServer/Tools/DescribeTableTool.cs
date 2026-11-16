@@ -12,14 +12,15 @@ public class DescribeTableTool(DatabaseService databaseService)
     public async Task<string> DescribeTable(
         [Description("Database name")] string database,
         [Description("Schema name")] string schema,
-        [Description("Table name")] string table)
+        [Description("Table name")] string table,
+        [Description("connectionId returned by connect")] string? connectionId = null)
     {
-        if (!databaseService.IsConnected)
-            return "Not connected. Please call connect first.";
+        if (!databaseService.TryGet(connectionId, out var configuration))
+            return ToolMessages.NotConnected;
 
         try
         {
-            await using var connection = await databaseService.OpenConnectionAsync(database);
+            await using var connection = await databaseService.OpenConnectionAsync(configuration, database);
             await using var command = connection.CreateCommand();
             command.CommandText = SqlServerQueries.DescribeTable;
             command.Parameters.AddWithValue("schema", schema);

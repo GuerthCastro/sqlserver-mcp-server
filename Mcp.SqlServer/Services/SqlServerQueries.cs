@@ -65,7 +65,10 @@ public static class SqlServerQueries
         ORDER BY c.ORDINAL_POSITION
         """;
 
-    public static readonly string[] ForbiddenKeywords = ["INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE"];
-
-    public const int MaxOutputCharacters = 50_000;
+    public static readonly string[] ForbiddenKeywords =
+    [
+        "INSERT", "UPDATE", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "REVOKE", "DENY",
+        "INTO", "EXEC", "EXECUTE", "MERGE", "BULK", "OPENROWSET", "OPENQUERY", "OPENDATASOURCE",
+        "DBCC", "BACKUP", "RESTORE", "SHUTDOWN", "KILL", "WAITFOR", "RECONFIGURE", "USE"
+    ];
 }

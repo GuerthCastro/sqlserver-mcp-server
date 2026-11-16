@@ -10,14 +10,15 @@ public class ListTablesTool(DatabaseService databaseService)
     [McpServerTool, Description("Lists all tables in the specified schema and database.")]
     public async Task<string> ListTables(
         [Description("Database name")] string database,
-        [Description("Schema name")] string schema)
+        [Description("Schema name")] string schema,
+        [Description("connectionId returned by connect")] string? connectionId = null)
     {
-        if (!databaseService.IsConnected)
-            return "Not connected. Please call connect first.";
+        if (!databaseService.TryGet(connectionId, out var configuration))
+            return ToolMessages.NotConnected;
 
         try
         {
-            await using var connection = await databaseService.OpenConnectionAsync(database);
+            await using var connection = await databaseService.OpenConnectionAsync(configuration, database);
             await using var command = connection.CreateCommand();
             command.CommandText = SqlServerQueries.ListTables;
             command.Parameters.AddWithValue("schema", schema);

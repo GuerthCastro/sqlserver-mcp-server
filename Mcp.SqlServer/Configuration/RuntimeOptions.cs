@@ -7,10 +7,13 @@ public sealed class RuntimeOptions
     public int PageMaxRows { get; init; } = 200;
     public int PageMaxCharacters { get; init; } = 20_000;
     public TimeSpan ConnectionIdleTimeout { get; init; } = TimeSpan.FromMinutes(60);
+    public WriteOptions Write { get; init; } = WriteOptions.Disabled;
 
-    public static RuntimeOptions FromEnvironment()
+    public static RuntimeOptions FromEnvironment() => From(Environment.GetEnvironmentVariable);
+
+    public static RuntimeOptions From(Func<string, string?> readVariable)
     {
-        var token = Environment.GetEnvironmentVariable("MCP_API_TOKEN");
+        var token = readVariable("MCP_API_TOKEN");
 
         if (string.IsNullOrWhiteSpace(token))
             throw new InvalidOperationException(
@@ -19,16 +22,17 @@ public sealed class RuntimeOptions
         return new RuntimeOptions
         {
             ApiToken = token.Trim(),
-            CommandTimeoutSeconds = ReadInt("MCP_COMMAND_TIMEOUT_SECONDS", 30),
-            PageMaxRows = ReadInt("MCP_PAGE_MAX_ROWS", 200),
-            PageMaxCharacters = ReadInt("MCP_PAGE_MAX_CHARACTERS", 20_000),
-            ConnectionIdleTimeout = TimeSpan.FromMinutes(ReadInt("MCP_CONNECTION_IDLE_MINUTES", 60))
+            CommandTimeoutSeconds = ReadInt(readVariable, "MCP_COMMAND_TIMEOUT_SECONDS", 30),
+            PageMaxRows = ReadInt(readVariable, "MCP_PAGE_MAX_ROWS", 200),
+            PageMaxCharacters = ReadInt(readVariable, "MCP_PAGE_MAX_CHARACTERS", 20_000),
+            ConnectionIdleTimeout = TimeSpan.FromMinutes(ReadInt(readVariable, "MCP_CONNECTION_IDLE_MINUTES", 60)),
+            Write = WriteOptions.From(readVariable)
         };
     }
 
-    private static int ReadInt(string name, int defaultValue)
+    private static int ReadInt(Func<string, string?> readVariable, string name, int defaultValue)
     {
-        var raw = Environment.GetEnvironmentVariable(name);
+        var raw = readVariable(name);
         return int.TryParse(raw, out var value) && value > 0 ? value : defaultValue;
     }
 }

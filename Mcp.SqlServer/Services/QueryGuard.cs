@@ -1,5 +1,4 @@
-﻿using System.Text;
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace Mcp.SqlServer.Services;
 
@@ -7,13 +6,12 @@ public static partial class QueryGuard
 {
     public static string? Validate(string sql, IReadOnlyCollection<string> forbiddenKeywords, out string normalizedSql)
     {
-        var sqlWithoutComments = CommentOrQuotedText().Replace(sql ?? string.Empty, match => match.Groups["comment"].Success ? " " : match.Value);
-        normalizedSql = sqlWithoutComments.Trim().TrimEnd(';').Trim();
+        normalizedSql = SqlText.RemoveComments(sql ?? string.Empty).Trim().TrimEnd(';').Trim();
 
         if (normalizedSql.Length == 0)
             return "Query is empty.";
 
-        var upperSqlWithoutQuotedText = CommentOrQuotedText().Replace(normalizedSql, "''").ToUpperInvariant();
+        var upperSqlWithoutQuotedText = SqlText.MaskQuotedTextAndComments(normalizedSql).ToUpperInvariant();
 
         if (!upperSqlWithoutQuotedText.StartsWith("SELECT") && !upperSqlWithoutQuotedText.StartsWith("WITH"))
             return "Only read-only queries starting with SELECT or WITH are allowed.";
@@ -21,12 +19,15 @@ public static partial class QueryGuard
         if (upperSqlWithoutQuotedText.Contains(';'))
             return "Multiple statements are not allowed. Send a single query without ';'.";
 
-        var forbidden = forbiddenKeywords.FirstOrDefault(keyword => Regex.IsMatch(upperSqlWithoutQuotedText, $@"\b{Regex.Escape(keyword)}\b"));
+        var forbidden = FindForbiddenKeyword(upperSqlWithoutQuotedText, forbiddenKeywords);
 
         return forbidden is null
             ? null
             : $"Query contains forbidden keyword: {forbidden}. Only read-only queries are allowed.";
     }
+
+    public static string? FindForbiddenKeyword(string upperSqlWithoutQuotedText, IReadOnlyCollection<string> forbiddenKeywords) =>
+        forbiddenKeywords.FirstOrDefault(keyword => Regex.IsMatch(upperSqlWithoutQuotedText, $@"\b{Regex.Escape(keyword)}\b"));
 
     public static string? ValidatePaging(string normalizedSql, int offset)
     {
@@ -39,27 +40,8 @@ public static partial class QueryGuard
         return null;
     }
 
-    private static bool HasTopLevelOrderBy(string normalizedSql)
-    {
-        var sqlWithoutQuotedText = CommentOrQuotedText().Replace(normalizedSql, match => match.Groups["comment"].Success ? " " : "''");
-        var topLevelSql = new StringBuilder(sqlWithoutQuotedText.Length);
-        var depth = 0;
-
-        foreach (var character in sqlWithoutQuotedText)
-        {
-            if (character == '(')
-                depth++;
-            else if (character == ')')
-                depth = Math.Max(0, depth - 1);
-
-            topLevelSql.Append(depth == 0 && character != ')' ? character : ' ');
-        }
-
-        return TopLevelOrderBy().IsMatch(topLevelSql.ToString());
-    }
-
-    [GeneratedRegex("""(?<comment>--[^\r\n]*|/\*.*?\*/)|'(?:[^']|'')*'|"(?:[^"]|"")*"|\[[^\]]*\]""", RegexOptions.Singleline)]
-    private static partial Regex CommentOrQuotedText();
+    private static bool HasTopLevelOrderBy(string normalizedSql) =>
+        TopLevelOrderBy().IsMatch(SqlText.TopLevel(SqlText.MaskQuotedTextAndComments(normalizedSql)));
 
     [GeneratedRegex(@"\bORDER\s+BY\b", RegexOptions.IgnoreCase)]
     private static partial Regex TopLevelOrderBy();

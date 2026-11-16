@@ -9,7 +9,7 @@ the conventions used, and how to submit a pull request.
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [.NET 11 SDK](https://dotnet.microsoft.com/download)
 - [Docker](https://www.docker.com/products/docker-desktop) (optional, for container testing)
 - A running SQL Server instance for manual testing
 
@@ -60,7 +60,7 @@ with `[McpServerTool]`.
 ## Conventions
 
 - **Language**: All code, comments, commits, and documentation must be written in English.
-- **Framework**: .NET 10, C# with file-scoped namespaces and primary constructors.
+- **Framework**: .NET 11, C# with file-scoped namespaces and primary constructors.
 - **Style**: Follow the existing code style — no reformatting of unrelated code.
 - **SQL**: All SQL lives in `SqlServerQueries.cs` as string constants. No inline SQL in tool files.
 - **Security**: Any new `ExecuteQuery`-style tool must enforce the same keyword guard and

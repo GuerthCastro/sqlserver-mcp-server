@@ -1,12 +1,12 @@
 # sqlserver-mcp-server
 
-[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com)
+[![.NET](https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.3.0-blue)](https://github.com/modelcontextprotocol/csharp-sdk)
 [![Microsoft.Data.SqlClient](https://img.shields.io/badge/Microsoft.Data.SqlClient-7.1-CC2927?logo=microsoftsqlserver)](https://github.com/dotnet/SqlClient)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://hub.docker.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A **read-only** MCP server for SQL Server databases, built with .NET 10 and the official
+A **read-only** MCP server for SQL Server databases, built with .NET 11 and the official
 [ModelContextProtocol C# SDK](https://github.com/modelcontextprotocol/csharp-sdk).
 
 Connect any MCP-compatible AI agent to your SQL Server instance and let it explore databases,
@@ -225,7 +225,7 @@ count
 
 ### Building from source
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [.NET 11 SDK](https://dotnet.microsoft.com/download)
 
 ```bash
 cd Mcp.SqlServer
@@ -270,9 +270,9 @@ with HTTP transport.
 
 | Component | Technology |
 |---|---|
-| Runtime | [.NET 10](https://dotnet.microsoft.com) |
+| Runtime | [.NET 11](https://dotnet.microsoft.com) |
 | MCP SDK | [ModelContextProtocol.AspNetCore 1.3.0](https://github.com/modelcontextprotocol/csharp-sdk) |
-| SQL Server driver | [Microsoft.Data.SqlClient 6.0](https://github.com/dotnet/SqlClient) |
+| SQL Server driver | [Microsoft.Data.SqlClient 7.1.2](https://github.com/dotnet/SqlClient) |
 | Container | [Docker](https://www.docker.com) |
 
 ---

@@ -9,9 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] - 2026-11-16
+
+### Added
+
+- Optional writes: `ExecuteWrite` and `ConfirmWrite` MCP tools, registered only with `MCP_WRITE_MODE=on` and a confirmation method (`MCP_WRITE_CONFIRMATION=elicitation|webhook`; `none` keeps writes disabled).
+- `ExecuteWrite` accepts a single `INSERT`, `UPDATE` or `DELETE` on one table. `UPDATE`/`DELETE` without `WHERE`, DDL, `TRUNCATE`, `DROP`, `GRANT`, login administration and multiple statements are always rejected.
+- Writes are limited to the `host:port/database` targets in `MCP_WRITE_ALLOWED_TARGETS` and to `MCP_WRITE_MAX_ROWS` rows (default 50).
+- `ExecuteWrite` runs the statement in a `SERIALIZABLE` transaction, captures the before image with the same `WHERE`, counts the rows and rolls back. It returns a `writeId`, the row count, the before image and the inverse SQL.
+- `ConfirmWrite` re-executes the statement and commits only if it affects the same number of rows; otherwise it rolls back and aborts. It returns the before image and the inverse SQL.
+- Inverse SQL identifies rows by primary key or, if there is none, by a unique index on `NOT NULL` columns. Tables without a reliable key are rejected.
+- `INSERT` is rewritten to capture the inserted keys: `OUTPUT INSERTED.<key columns> INTO @mcp_inserted_keys` is inserted before `VALUES`, `SELECT` or `DEFAULT VALUES` (`OUTPUT` with `INTO` also works on tables with triggers). Statements that already contain `OUTPUT` are rejected.
+- Confirmation by MCP elicitation (fails closed if the client does not support it) or by a 6-digit code sent only to a webhook signed with HMAC-SHA256 (`X-Signature`, `X-Timestamp`), configured with `MCP_WRITE_CONFIRM_WEBHOOK_URL` and `MCP_WRITE_CONFIRM_WEBHOOK_SECRET`. The code never appears in tool responses or logs.
+- A `writeId` expires after 5 minutes, is single use, is bound to the SQL hash, the `connectionId` and the database, and is invalidated after 3 wrong codes.
+- Audit log entries for every write event (timestamp, database, operation, rows, `writeId`), without credentials, full SQL or codes.
+- Unit tests for the write guard, inverse SQL, pending writes, write configuration and webhook signature.
+
 ### Changed
 
 - Target .NET 11 (`net11.0`) and build the Docker image on `mcr.microsoft.com/dotnet/sdk:11.0` and `mcr.microsoft.com/dotnet/aspnet:11.0`.
+- The SQL lexer used by the read-only guard (comments, quoted text, top-level clauses) moved to `SqlText` and is shared with the write guard. Behavior is unchanged.
 
 ---
 
@@ -69,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker multi-stage build targeting `mcr.microsoft.com/dotnet/aspnet:10.0`.
 - `docker-compose.yml` exposing port `3100`.
 
-[Unreleased]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/releases/tag/v0.1.0

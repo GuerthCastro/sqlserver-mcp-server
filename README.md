@@ -6,11 +6,12 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://hub.docker.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A **read-only** MCP server for SQL Server databases, built with .NET 11 and the official
+A **read-only by default** MCP server for SQL Server databases, built with .NET 11 and the official
 [ModelContextProtocol C# SDK](https://github.com/modelcontextprotocol/csharp-sdk).
 
 Connect any MCP-compatible AI agent to your SQL Server instance and let it explore databases,
-schemas, tables, and run read-only queries — all through natural language.
+schemas, tables, and run read-only queries — all through natural language. Writes are optional,
+off by default, and always confirmed by a human.
 
 ---
 
@@ -25,6 +26,8 @@ schemas, tables, and run read-only queries — all through natural language.
 - Per-client connections: each `Connect` returns its own `connectionId`, so clients never share credentials
 - Bearer token authentication on the MCP endpoint
 - Paged results with a row and character budget per page, plus a command timeout
+- Optional writes (`INSERT`, `UPDATE`, `DELETE`) with an allow list, a row limit, human confirmation
+  through MCP elicitation or a signed webhook, before image and inverse SQL
 - `/health` endpoint for Docker, Portainer or monitoring
 - Lightweight Docker container with no persistent state
 - Compatible with Claude Desktop, Claude Code, Cursor, Windsurf, and any MCP-compatible client
@@ -59,6 +62,8 @@ The server starts on port `3200` by default and exposes the MCP endpoint at `/mc
 Every tool except `Connect` takes the `connectionId` returned by `Connect`. Idle connections
 expire after 60 minutes by default.
 
+`ExecuteWrite` and `ConfirmWrite` are registered only when writes are enabled (see [Writes](#writes-optional)).
+
 ---
 
 ## Paging
@@ -91,6 +96,160 @@ rows 201-400 · nextOffset: 400 · hasMore: true
 
 ---
 
+## Writes (optional)
+
+Writes are **off by default**. With `MCP_WRITE_MODE=on` and a confirmation method configured,
+two extra tools are registered. With writes off, they do not exist for the client.
+
+| Tool | Description |
+|---|---|
+| `ExecuteWrite` | Prepares a single `INSERT`, `UPDATE` or `DELETE`. Nothing is changed: the statement runs in a transaction that is rolled back, and the response returns a `writeId`, the affected rows, the before image and the inverse SQL |
+| `ConfirmWrite` | Applies a prepared write after a human confirms it, and returns the before image and the inverse SQL to revert it |
+
+### How a write flows
+
+1. The agent calls `ExecuteWrite(connectionId, database, sql)`.
+2. The server validates the statement and checks `host:port/database` against
+   `MCP_WRITE_ALLOWED_TARGETS`. It then runs the statement inside a `SERIALIZABLE` transaction,
+   captures the before image (a `SELECT` with the same `WHERE`), counts the rows and **rolls back**.
+3. A human confirms the write, either in the MCP client (elicitation) or by reading a 6-digit code
+   that is delivered only to the confirmation webhook.
+4. The agent calls `ConfirmWrite(writeId, code, connectionId)`. The statement runs again. If it
+   affects a different number of rows than prepared, it is rolled back and aborted. Otherwise it is
+   committed, and the response includes the inverse SQL to revert it.
+
+### Rules
+
+- Only a single `INSERT`, `UPDATE` or `DELETE` on one table of the target database.
+  `UPDATE` and `DELETE` without `WHERE` are rejected. DDL, `TRUNCATE`, `DROP`, `GRANT`,
+  login and user administration and multiple statements are always rejected.
+- Not supported: `OUTPUT`, `TOP`, `UPDATE ... FROM`, `DELETE ... FROM ... JOIN`, table hints, table
+  aliases, variables in `SET`, `.WRITE` and tables in another database.
+- At most `MCP_WRITE_MAX_ROWS` rows per write (default `50`).
+- The table needs a primary key, or a unique index on `NOT NULL` columns. That key identifies the
+  rows in the inverse SQL. Tables without a reliable key are rejected, and key columns cannot be
+  updated.
+- Columns of type `sql_variant`, `geography`, `geometry`, `hierarchyid` or user-defined types cannot be
+  used as keys or updated, and `DELETE` is rejected on tables that have them. Computed and
+  `rowversion` columns are skipped when rows are restored.
+- A `writeId` expires after 5 minutes, can be used once, and is bound to the hash of the SQL, the
+  `connectionId` and the database. Three wrong codes invalidate it.
+- **The `INSERT` statement is rewritten.** To build the inverse `DELETE`, the server needs the keys of
+  the rows that were actually inserted, so it inserts
+  `OUTPUT INSERTED.<key columns> INTO @mcp_inserted_keys` before `VALUES`, `SELECT` or `DEFAULT VALUES`.
+  `OUTPUT ... INTO` is used because SQL Server rejects `OUTPUT` without `INTO` on tables with enabled
+  triggers. Statements that already contain `OUTPUT` are rejected. The inverse SQL for an
+  `INSERT` is returned by `ConfirmWrite`, because generated keys only exist after the real insert.
+- The inverse SQL restores the before image captured at commit time. It does not undo trigger side
+  effects, and it does not rewind identity or sequence values.
+
+### Write configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `MCP_WRITE_MODE` | `off` | `on` registers `ExecuteWrite` and `ConfirmWrite`, if a confirmation method is set |
+| `MCP_WRITE_CONFIRMATION` | `none` | `elicitation`, `webhook` or `none`. `none` disables writes even with `MCP_WRITE_MODE=on` |
+| `MCP_WRITE_ALLOWED_TARGETS` | | Required when writes are enabled. Comma-separated `host:port/database` list, for example `db.example.internal:1433/app`. The host must match the one used in `Connect` |
+| `MCP_WRITE_MAX_ROWS` | `50` | Maximum rows a single write may affect |
+| `MCP_WRITE_CONFIRM_WEBHOOK_URL` | | Required for `webhook`. Must be `https` unless it points to localhost |
+| `MCP_WRITE_CONFIRM_WEBHOOK_SECRET` | | Required for `webhook`. At least 32 characters. Generate with `openssl rand -hex 32` |
+
+The server fails at startup when the write configuration is invalid.
+
+With `elicitation`, the client must support MCP elicitation. If it does not, `ExecuteWrite` and
+`ConfirmWrite` fail closed and nothing is written.
+
+### Confirmation webhook
+
+For every prepared write, the server sends one `POST` with a JSON body:
+
+```json
+{
+  "event": "write.confirmation_requested",
+  "server": "sqlserver-mcp-server",
+  "writeId": "9f2c4d1e8a7b6c5d4e3f2a1b0c9d8e7f",
+  "code": "482915",
+  "timestamp": 1790000000,
+  "expiresAt": "2026-09-21T14:05:00.0000000+00:00",
+  "target": { "host": "db.example.internal", "port": 1433, "database": "app" },
+  "operation": "UPDATE",
+  "table": "dbo.orders",
+  "rows": 3,
+  "sql": "UPDATE orders SET status = 'cancelled' WHERE id IN (101, 102, 103)"
+}
+```
+
+Headers:
+
+| Header | Value |
+|---|---|
+| `X-Timestamp` | Unix time in seconds; also present in the body |
+| `X-Signature` | `sha256=` followed by the lowercase hex HMAC-SHA256 of `{X-Timestamp}.{raw body}`, keyed with `MCP_WRITE_CONFIRM_WEBHOOK_SECRET` |
+
+To verify a request, the receiver should:
+
+1. Read the raw body before parsing it.
+2. Compute the HMAC-SHA256 of `{X-Timestamp}.{raw body}` with the shared secret and compare it
+   with `X-Signature` in constant time.
+3. Reject timestamps older or newer than 5 minutes, and `writeId` values it has already seen
+   (replay protection).
+4. Deliver the code to the human, and answer `2xx` only after that. Any other status, or no
+   answer within 10 seconds, makes `ExecuteWrite` fail and nothing is prepared.
+
+The code appears only in the webhook body. It is never included in tool responses or in the
+server logs.
+
+Minimal receiver, Python standard library only. `deliver_to_human` is a placeholder for your
+notification channel:
+
+```python
+import hashlib, hmac, json, os, time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+SECRET = os.environ["MCP_WRITE_CONFIRM_WEBHOOK_SECRET"].encode()
+seen_write_ids = set()
+
+def deliver_to_human(message: str) -> None:
+    raise NotImplementedError("Send the message through a channel only the human can read")
+
+class ConfirmationReceiver(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        timestamp = self.headers.get("X-Timestamp", "")
+        expected = "sha256=" + hmac.new(SECRET, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, self.headers.get("X-Signature", "")):
+            return self.reply(401)
+        if not timestamp.isdigit() or abs(time.time() - int(timestamp)) > 300:
+            return self.reply(401)
+        payload = json.loads(body)
+        if payload["writeId"] in seen_write_ids:
+            return self.reply(409)
+        seen_write_ids.add(payload["writeId"])
+        deliver_to_human(f"{payload['operation']} on {payload['table']} ({payload['rows']} rows)\n"
+                         f"{payload['sql']}\nConfirmation code: {payload['code']}")
+        self.reply(204)
+
+    def reply(self, status: int) -> None:
+        self.send_response(status)
+        self.end_headers()
+
+HTTPServer(("0.0.0.0", 8080), ConfirmationReceiver).serve_forever()
+```
+
+> **Warning.** The confirmation channel must not be readable by the AI agent. If the agent can
+> read the mailbox, chat, log files or notification feed where the code arrives, for example
+> through another MCP server or a connected integration, it can confirm its own writes and the
+> human approval step is gone. Use a channel that only the human can see, and do not log the code
+> in the receiver.
+
+### Audit log
+
+Every write event is logged at `Information` level with the timestamp, database, operation, row
+count and `writeId`: `prepared`, `committed`, `aborted`, `failed`, `cancelled`, `invalid_code` and
+`invalidated`. Credentials, the full SQL and the confirmation code are never logged.
+
+---
+
 ## Configuration
 
 Settings are read from environment variables. With Docker Compose, put them in a `.env` file
@@ -103,6 +262,7 @@ next to `docker-compose.yml` (the file is git-ignored).
 | `MCP_PAGE_MAX_ROWS` | No | `200` | Maximum rows per `ExecuteQuery` page |
 | `MCP_PAGE_MAX_CHARACTERS` | No | `20000` | Maximum characters of row data per `ExecuteQuery` page |
 | `MCP_CONNECTION_IDLE_MINUTES` | No | `60` | Minutes before an unused `connectionId` expires |
+| `MCP_WRITE_*` | No | | Optional writes, off by default. See [Write configuration](#write-configuration) |
 
 Database credentials are not configured here: they are sent at runtime through `Connect` and
 kept in memory only. To change the exposed port, edit the `ports` mapping in `docker-compose.yml`.
@@ -200,7 +360,7 @@ count
 
 ## Security
 
-- **Read-only by design.** A keyword guard rejects multiple statements, `SELECT ... INTO`,
+- **`ExecuteQuery` is read-only.** A keyword guard rejects multiple statements, `SELECT ... INTO`,
   `EXEC`, `MERGE`, `OPENROWSET`, DML/DDL keywords and other statements with side effects before
   they reach the database. Every query also runs inside a transaction that is always rolled back.
 - **Use a read-only login.** SQL Server has no read-only transaction mode, so the strongest
@@ -212,6 +372,9 @@ count
 - **Bounded output.** Results are paged by row and character budgets and every command has a
   timeout. The server stops reading once a page is full and cancels the rest of the result
   instead of loading every row.
+- **Writes are opt-in and human-confirmed.** Write tools exist only with `MCP_WRITE_MODE=on`, only
+  for the targets in `MCP_WRITE_ALLOWED_TARGETS`, and every write needs a human confirmation through
+  a channel the agent cannot read. Use a dedicated database user with the minimum write privileges.
 - **Local network recommended.** Do not expose the port to the internet without TLS and an
   additional authentication layer.
 
@@ -243,11 +406,19 @@ sqlserver-mcp-server/
 └── Mcp.SqlServer/
     ├── Configuration/
     │   ├── RuntimeOptions.cs        # Server settings read from environment variables
+    │   ├── WriteOptions.cs          # Write settings and allowed targets
     │   └── ServerConfiguration.cs   # Immutable record holding connection parameters
     ├── Services/
     │   ├── DatabaseService.cs       # Per-connectionId registry of connection configs
     │   ├── QueryGuard.cs            # Pre-validation of ExecuteQuery input and paging
     │   ├── ResultPager.cs           # Reads one page of an ExecuteQuery result
+    │   ├── SqlText.cs               # Comment, quoting and top-level SQL lexer
+    │   ├── WriteGuard.cs            # Validation and parsing of ExecuteWrite statements
+    │   ├── WriteCatalog.cs          # Table, column and unique key lookup for writes
+    │   ├── WriteSql.cs              # Before image, key capture and inverse SQL
+    │   ├── WriteService.cs          # Prepare, confirm, commit and audit of writes
+    │   ├── PendingWriteStore.cs     # writeId registry: expiry, binding and codes
+    │   ├── ConfirmationWebhook.cs   # Signed confirmation webhook
     │   └── SqlServerQueries.cs      # SQL constants and security policy
     ├── Tools/
     │   ├── ConnectTool.cs           # MCP tools: connect, disconnect
@@ -255,7 +426,8 @@ sqlserver-mcp-server/
     │   ├── ListSchemasTool.cs       # MCP tool: listSchemas
     │   ├── ListTablesTool.cs        # MCP tool: listTables
     │   ├── DescribeTableTool.cs     # MCP tool: describeTable
-    │   └── ExecuteQueryTool.cs      # MCP tool: executeQuery
+    │   ├── ExecuteQueryTool.cs      # MCP tool: executeQuery
+    │   └── WriteTools.cs            # MCP tools: executeWrite, confirmWrite (writes enabled only)
     └── Program.cs                   # ASP.NET Core bootstrap
 ```
 

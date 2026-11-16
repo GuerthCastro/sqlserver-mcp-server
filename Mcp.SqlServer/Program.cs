@@ -2,17 +2,34 @@
 using System.Text;
 using Mcp.SqlServer.Configuration;
 using Mcp.SqlServer.Services;
+using Mcp.SqlServer.Tools;
 
 var options = RuntimeOptions.FromEnvironment();
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton<DatabaseService>();
-builder.Services.AddMcpServer()
+
+var mcpServer = builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithToolsFromAssembly();
 
+if (options.Write.Enabled)
+{
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton<PendingWriteStore>();
+    builder.Services.AddSingleton<WriteService>();
+    builder.Services.AddHttpClient<ConfirmationWebhook>(client => client.Timeout = TimeSpan.FromSeconds(10));
+    mcpServer.WithTools<WriteTools>();
+}
+
 var app = builder.Build();
+
+if (options.Write.Enabled)
+    app.Logger.LogInformation("Write tools enabled: confirmation={Confirmation}, allowed targets={TargetCount}, max rows={MaxRows}",
+        options.Write.Confirmation, options.Write.AllowedTargets.Count, options.Write.MaxRows);
+else if (options.Write.ModeOn)
+    app.Logger.LogWarning("MCP_WRITE_MODE is on but MCP_WRITE_CONFIRMATION is none: write tools are disabled.");
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 

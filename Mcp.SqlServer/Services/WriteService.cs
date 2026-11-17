@@ -28,9 +28,6 @@ public sealed class WriteService(
         if (Write.Confirmation == WriteConfirmationMode.Elicitation && !SupportsElicitation(server))
             return ElicitationNotSupported;
 
-        if (!Write.IsAllowed(configuration.Host, configuration.ResolvedPort, database))
-            return $"Write rejected: {configuration.Host}:{configuration.ResolvedPort}/{database} is not in MCP_WRITE_ALLOWED_TARGETS.";
-
         var guardError = WriteGuard.Analyze(sql, out var statement);
         if (guardError is not null)
             return $"Write rejected: {guardError}";

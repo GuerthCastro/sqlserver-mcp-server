@@ -26,8 +26,8 @@ if (options.Write.Enabled)
 var app = builder.Build();
 
 if (options.Write.Enabled)
-    app.Logger.LogInformation("Write tools enabled: confirmation={Confirmation}, allowed targets={TargetCount}, max rows={MaxRows}",
-        options.Write.Confirmation, options.Write.AllowedTargets.Count, options.Write.MaxRows);
+    app.Logger.LogInformation("Write tools enabled: confirmation={Confirmation}, max rows={MaxRows}",
+        options.Write.Confirmation, options.Write.MaxRows);
 else if (options.Write.ModeOn)
     app.Logger.LogWarning("MCP_WRITE_MODE is on but MCP_WRITE_CONFIRMATION is none: write tools are disabled.");
 

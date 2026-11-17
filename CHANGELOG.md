@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-11-16
+
+### Removed
+
+- `MCP_WRITE_ALLOWED_TARGETS` and the per-target write check. `ExecuteWrite` is allowed on any database the connection can reach, and protection relies on the human confirmation and the privileges of the database user. The variable is ignored if it is still set.
+- The allowed targets count from the startup log.
+
+---
+
 ## [0.3.0] - 2026-11-16
 
 ### Added
@@ -88,7 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker multi-stage build targeting `mcr.microsoft.com/dotnet/aspnet:10.0`.
 - `docker-compose.yml` exposing port `3100`.
 
-[Unreleased]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/GuerthCastro/sqlserver-mcp-server/releases/tag/v0.1.0

@@ -109,8 +109,8 @@ two extra tools are registered. With writes off, they do not exist for the clien
 ### How a write flows
 
 1. The agent calls `ExecuteWrite(connectionId, database, sql)`.
-2. The server validates the statement and checks `host:port/database` against
-   `MCP_WRITE_ALLOWED_TARGETS`. It then runs the statement inside a `SERIALIZABLE` transaction,
+2. The server validates the statement and, when `MCP_WRITE_ALLOWED_TARGETS` is set, checks
+   `host:port/database` against it. It then runs the statement inside a `SERIALIZABLE` transaction,
    captures the before image (a `SELECT` with the same `WHERE`), counts the rows and **rolls back**.
 3. A human confirms the write, either in the MCP client (elicitation) or by reading a 6-digit code
    that is delivered only to the confirmation webhook.
@@ -126,6 +126,10 @@ two extra tools are registered. With writes off, they do not exist for the clien
 - Not supported: `OUTPUT`, `TOP`, `UPDATE ... FROM`, `DELETE ... FROM ... JOIN`, table hints, table
   aliases, variables in `SET`, `.WRITE` and tables in another database.
 - At most `MCP_WRITE_MAX_ROWS` rows per write (default `50`).
+- Target restriction is optional. Without `MCP_WRITE_ALLOWED_TARGETS` (unset or empty), writes are
+  allowed on any database the connection can reach, and protection relies on the human confirmation
+  and the privileges of the database user. With it, only the exact `host:port/database` entries are
+  allowed.
 - The table needs a primary key, or a unique index on `NOT NULL` columns. That key identifies the
   rows in the inverse SQL. Tables without a reliable key are rejected, and key columns cannot be
   updated.
@@ -149,7 +153,7 @@ two extra tools are registered. With writes off, they do not exist for the clien
 |---|---|---|
 | `MCP_WRITE_MODE` | `off` | `on` registers `ExecuteWrite` and `ConfirmWrite`, if a confirmation method is set |
 | `MCP_WRITE_CONFIRMATION` | `none` | `elicitation`, `webhook` or `none`. `none` disables writes even with `MCP_WRITE_MODE=on` |
-| `MCP_WRITE_ALLOWED_TARGETS` | | Required when writes are enabled. Comma-separated `host:port/database` list, for example `db.example.internal:1433/app`. The host must match the one used in `Connect` |
+| `MCP_WRITE_ALLOWED_TARGETS` | | Optional. Comma-separated `host:port/database` list, for example `db.example.internal:1433/app`. When set, writes are allowed only on these exact targets and the host must match the one used in `Connect`. When unset or empty, writes are allowed on any database |
 | `MCP_WRITE_MAX_ROWS` | `50` | Maximum rows a single write may affect |
 | `MCP_WRITE_CONFIRM_WEBHOOK_URL` | | Required for `webhook`. Must be `https` unless it points to localhost |
 | `MCP_WRITE_CONFIRM_WEBHOOK_SECRET` | | Required for `webhook`. At least 32 characters. Generate with `openssl rand -hex 32` |
@@ -372,8 +376,8 @@ count
 - **Bounded output.** Results are paged by row and character budgets and every command has a
   timeout. The server stops reading once a page is full and cancels the rest of the result
   instead of loading every row.
-- **Writes are opt-in and human-confirmed.** Write tools exist only with `MCP_WRITE_MODE=on`, only
-  for the targets in `MCP_WRITE_ALLOWED_TARGETS`, and every write needs a human confirmation through
+- **Writes are opt-in and human-confirmed.** Write tools exist only with `MCP_WRITE_MODE=on`, can be
+  limited to the targets in `MCP_WRITE_ALLOWED_TARGETS`, and every write needs a human confirmation through
   a channel the agent cannot read. Use a dedicated database user with the minimum write privileges.
 - **Local network recommended.** Do not expose the port to the internet without TLS and an
   additional authentication layer.

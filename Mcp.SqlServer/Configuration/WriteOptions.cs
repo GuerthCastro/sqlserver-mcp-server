@@ -52,7 +52,7 @@ public sealed class WriteOptions
     public bool Enabled => ModeOn && Confirmation != WriteConfirmationMode.None;
 
     public bool IsAllowed(string host, int port, string database) =>
-        AllowedTargets.Any(target => target.Matches(host, port, database));
+        AllowedTargets.Count == 0 || AllowedTargets.Any(target => target.Matches(host, port, database));
 
     public static WriteOptions From(Func<string, string?> readVariable)
     {
@@ -73,9 +73,6 @@ public sealed class WriteOptions
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(WriteTarget.Parse)
             .ToList();
-
-        if (targets.Count == 0)
-            throw new InvalidOperationException("MCP_WRITE_ALLOWED_TARGETS is required when MCP_WRITE_MODE is 'on'. Use a comma-separated list of host:port/database.");
 
         var maxRowsText = readVariable("MCP_WRITE_MAX_ROWS");
         var maxRows = 50;

@@ -62,9 +62,52 @@ public class WriteOptionsTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void From_ShouldAllowAnyTarget_WhenAllowedTargetsIsNotSet(string? targets)
+    {
+        // Arrange
+        var variables = new Dictionary<string, string?>
+        {
+            ["MCP_WRITE_MODE"] = "on",
+            ["MCP_WRITE_CONFIRMATION"] = "elicitation",
+            ["MCP_WRITE_ALLOWED_TARGETS"] = targets
+        };
+
+        // Act
+        var options = WriteOptions.From(variables.GetValueOrDefault);
+
+        // Assert
+        options.Enabled.Should().BeTrue();
+        options.AllowedTargets.Should().BeEmpty();
+        options.IsAllowed("db.example.test", 1433, "app").Should().BeTrue();
+        options.IsAllowed("other.example.test", 1, "sandbox").Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsAllowed_ShouldRejectUnlistedTarget_WhenAllowedTargetsIsSet()
+    {
+        // Arrange
+        var variables = new Dictionary<string, string>
+        {
+            ["MCP_WRITE_MODE"] = "on",
+            ["MCP_WRITE_CONFIRMATION"] = "elicitation",
+            ["MCP_WRITE_ALLOWED_TARGETS"] = "db.example.test:1433/app"
+        };
+
+        // Act
+        var options = WriteOptions.From(variables.GetValueOrDefault);
+
+        // Assert
+        options.IsAllowed("db.example.test", 1433, "app").Should().BeTrue();
+        options.IsAllowed("db.example.test", 1433, "sandbox").Should().BeFalse();
+        options.IsAllowed("other.example.test", 1433, "app").Should().BeFalse();
+    }
+
+    [Theory]
     [InlineData("MCP_WRITE_MODE", "yes")]
     [InlineData("MCP_WRITE_CONFIRMATION", "email")]
-    [InlineData("MCP_WRITE_ALLOWED_TARGETS", "")]
     [InlineData("MCP_WRITE_ALLOWED_TARGETS", "db.example.test/app")]
     [InlineData("MCP_WRITE_ALLOWED_TARGETS", "db.example.test:port/app")]
     [InlineData("MCP_WRITE_MAX_ROWS", "0")]

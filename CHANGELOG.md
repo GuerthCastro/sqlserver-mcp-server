@@ -13,11 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-11-16
 
-### Changed
+### Removed
 
-- `MCP_WRITE_ALLOWED_TARGETS` is now optional. When it is unset or empty, `ExecuteWrite` is allowed on any database, and protection relies on the human confirmation and the privileges of the database user. When it is set, writes are still limited to its exact `host:port/database` entries.
-- The server no longer fails at startup when `MCP_WRITE_MODE=on` and `MCP_WRITE_ALLOWED_TARGETS` is missing.
-- The startup log reports `allowed targets=any` when no target restriction is configured.
+- `MCP_WRITE_ALLOWED_TARGETS` and the per-target write check. `ExecuteWrite` is allowed on any database the connection can reach, and protection relies on the human confirmation and the privileges of the database user. The variable is ignored if it is still set.
+- The allowed targets count from the startup log.
 
 ---
 
